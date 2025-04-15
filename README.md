@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Secure Group Chat is a real-time messaging application designed for secure communication among multiple users. The project implements robust authentication, group management, and encrypted messaging using modern web technologies and industry-standard security practices.
+
+## Project Summary
+
+Secure Group Chat offers a platform that enables users to register, log in, create or join chat groups, and exchange messages securely. The backend APIs handle user authentication, group management, and message processing, while real-time communication is supported via WebSockets. This project aims to provide an intuitive, responsive, and secure environment for group messaging.
 
 ## Getting Started
 
-First, run the development server:
+First, run the socket server:
+
+```aiignore
+cd socket-server && npm run dev
+```
+Open [http://localhost:4000](http://localhost:3000) with your browser to see is socket server is running.
+
+Second, open new terminal on root level and run:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. npm install
+
+2. npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
+1. User Login
+2. User Registration
+3. Group Creation
+4. Group Joining
+5. Group Messaging
+6. Real-time Communication
+7. Message Encryption
+8. User Authentication
+9. Smart replies
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Technologies Used
+- Node.js
+- Express.js
+- Socket.IO
+- MongoDB
+- Next.js
+- AWS S3
 
-## Learn More
+## Roadmap
+The project is currently in the development phase. Future enhancements may include:
+- PWA support
+- Image smart replies
+- Playwright testing
+- Docker support
+- CI/CD integration
 
-To learn more about Next.js, take a look at the following resources:
+## Demo
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+General steps
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+[general.mov](demo/general.mov)
 
-## Deploy on Vercel
+Chat
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[chat.mov](demo/chat.mov)
