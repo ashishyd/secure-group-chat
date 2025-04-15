@@ -8,22 +8,44 @@ import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import { Group } from "@/types";
 
+/**
+ * GroupsPage Component
+ *
+ * This component displays a list of groups the user has joined, allows the user to create a new group,
+ * and provides functionality to join, leave, or delete groups. It also handles authentication and redirects
+ * unauthenticated users to the login page.
+ */
 export default function GroupsPage() {
+  // State to manage the visibility of the "Create Group" modal
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+
+  // State to store the name of the new group being created
   const [newGroupName, setNewGroupName] = useState<string>("");
+
+  // State to store any error messages related to the modal
   const [modalError, setModalError] = useState<string | null>(null);
+
+  // Next.js router for navigation
   const router = useRouter();
+
+  // Authentication context to get user details and authentication status
   const { user, loading, isAuthenticated } = useAuth();
+
+  // State to store the list of groups fetched from the API
   const [groups, setGroups] = useState<Group[]>([]);
 
-  // Redirect to login if not authenticated.
+  /**
+   * Effect to redirect unauthenticated users to the login page.
+   */
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push("/login");
     }
   }, [loading, isAuthenticated, router]);
 
-  // Fetch all available groups from the API.
+  /**
+   * Effect to fetch all available groups from the API when the component mounts.
+   */
   useEffect(() => {
     async function fetchAllGroups() {
       try {
@@ -43,15 +65,22 @@ export default function GroupsPage() {
     fetchAllGroups();
   }, []);
 
+  // Display a loading message while authentication status is being determined
   if (loading) return <div className="p-4">Loading...</div>;
+
+  // Display a redirecting message if the user is not authenticated
   if (!user) return <div className="p-4">Redirecting...</div>;
 
+  /**
+   * Handles the action of joining a group.
+   *
+   * @param groupId - The ID of the group to join
+   */
   const handleJoin = async (groupId: string) => {
     try {
       const response = await fetch("/api/groups/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Replace 'user1' with the actual authenticated user's ID.
         body: JSON.stringify({ groupId, userId: "user1" }),
       });
       if (response.ok) {
@@ -64,6 +93,11 @@ export default function GroupsPage() {
     }
   };
 
+  /**
+   * Handles the action of leaving a group.
+   *
+   * @param groupId - The ID of the group to leave
+   */
   const handleLeave = async (groupId: string) => {
     try {
       const response = await fetch("/api/groups/leave", {
@@ -81,11 +115,11 @@ export default function GroupsPage() {
     }
   };
 
-  const handleDelete = async () => {
-    // Your delete API call logic
-  };
-
-  // Handler for creating a new group from within the modal.
+  /**
+   * Handles the action of creating a new group.
+   *
+   * @param e - The form submission event
+   */
   const handleCreateGroup = async (e: FormEvent) => {
     e.preventDefault();
     setModalError(null);
@@ -129,13 +163,13 @@ export default function GroupsPage() {
               currentUser={user}
               onJoin={handleJoin}
               onLeave={handleLeave}
-              onDelete={handleDelete}
+              onDelete={() => {} /* Placeholder for delete functionality */}
             />
           ))}
         </div>
       )}
 
-      {/* Floating Rounded + Button */}
+      {/* Floating button to open the "Create Group" modal */}
       <button
         onClick={() => setIsModalOpen(true)}
         className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-lg z-50"
@@ -144,7 +178,7 @@ export default function GroupsPage() {
         <span className="text-3xl">+</span>
       </button>
 
-      {/* Modal Popup for Creating New Group */}
+      {/* Modal for creating a new group */}
       {isModalOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-11/12 max-w-md relative">
