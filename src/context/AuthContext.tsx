@@ -7,32 +7,49 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import { Group, User } from "@/types";
+import { User } from "@/types";
 
+/**
+ * Defines the structure of the authentication context.
+ */
 interface AuthContextType {
+  /** The currently authenticated user or null if not authenticated. */
   user: User | null;
-  groups: Group[];
+  /** Indicates whether the authentication data is still loading. */
   loading: boolean;
+  /** Indicates whether the user is authenticated. */
   isAuthenticated: boolean;
+  /** Refreshes the user data by fetching it from the server. */
   refreshUser: () => Promise<void>;
+  /** Updates the user state. */
   setUser: (user: User) => void;
-  setGroups: (groups: Group[]) => void;
 }
 
+/**
+ * Creates the authentication context with default values.
+ */
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  groups: [],
   loading: true,
   isAuthenticated: false,
   refreshUser: async () => {},
   setUser: () => {},
-  setGroups: () => {},
 });
 
+/**
+ * Provides the authentication context to its children.
+ * Handles user state, loading state, and authentication logic.
+ *
+ * @param children - The child components that will consume the context.
+ */
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AuthContextType["user"]>(null);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * Fetches the current user data from the server and updates the state.
+   * Sets the loading state during the fetch operation.
+   */
   const refreshUser = async () => {
     setLoading(true);
     try {
@@ -50,6 +67,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Fetches the user data when the component mounts.
   useEffect(() => {
     refreshUser();
   }, []);
@@ -69,4 +87,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
+/**
+ * Custom hook to access the authentication context.
+ *
+ * @returns The authentication context value.
+ */
 export const useAuth = () => useContext(AuthContext);
