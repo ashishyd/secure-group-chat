@@ -6,9 +6,34 @@ Secure Group Chat offers a platform that enables users to register, log in, crea
 
 ## Getting Started
 
+### environment setup
+1. Clone the repository
+2. Create .env file in the root directory and add the following variables:
+```
+PORT
+ENCRYPTION_KEY
+ENCRYPTION_IV
+ENCRYPTION_ALGORITHM
+ENCRYPTION_SALT
+MONGODB_URI
+DB_NAME
+# Azure Blob Storage connection string
+AZURE_BLOB_CONNECTION
+AZURE_BLOB_CONTAINER=chatmedia
+# AWS S3 bucket settings
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_REGION
+AWS_S3_BUCKET_NAME
+# OPEN API key for Smart Reply integration
+OPENAI_API_KEY
+# JWT secret
+JWT_SECRET
+```
+
 First, run the socket server:
 
-```aiignore
+```bash
 cd socket-server && npm run dev
 ```
 Open [http://localhost:4000](http://localhost:3000) with your browser to see is socket server is running.
@@ -16,9 +41,7 @@ Open [http://localhost:4000](http://localhost:3000) with your browser to see is 
 Second, open new terminal on root level and run:
 
 ```bash
-1. npm install
-
-2. npm run dev
+npm install && npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
