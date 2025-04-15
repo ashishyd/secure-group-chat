@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare token payload.
-    const tokenPayload = { id: user.id, email: user.email, name: user.name };
+    const tokenPayload = { id: user._id, email: user.email, name: user.name };
 
     // Sign token with secret from environment.
     const token = jwt.sign(tokenPayload, process.env.JWT_SECRET!, {

@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     // Retrieve token from cookies.
     const token = request.cookies.get("token")?.value;
+
     if (!token) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
@@ -14,16 +15,21 @@ export async function GET(request: NextRequest) {
     // Verify the token.
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
       id: string;
+      email: string;
+      name: string;
     };
 
+    console.log(decoded);
+
     // Fetch the user from the database.
-    const user = await mongoDB.findOne("users", { id: decoded.id });
+    const user = await mongoDB.findOne("users", { email: decoded.email });
+    console.log(user);
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // // Ensure user._id is an ObjectId
-    // const userId = new ObjectId(user._id).toString();
+    // // Ensure user.id is an ObjectId
+    // const userId = new ObjectId(user.id).toString();
     //
     // // Fetch groups where the user is a member OR the creator.
     // const groups = await mongoDB.find("groups", {
@@ -33,7 +39,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         user: {
-          _id: user._id,
+          id: user._id,
           name: user.name,
           email: user.email,
         },

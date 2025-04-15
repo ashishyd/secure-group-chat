@@ -76,29 +76,35 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
 
   if (!user) return <div>Loading user...</div>;
 
+  // Fetch messages on mount (and when groupId changes)
   useEffect(() => {
     async function fetchMessages() {
-      const res = await fetch(`/api/messages?groupId=${groupId}`);
-      const data = await res.json();
-
-      if (res.ok && Array.isArray(data.messages)) {
-        const decrypted = data.messages.map((msg: Message) => ({
-          ...msg,
-          message: decryptMessage(msg.message),
-        }));
-        setMessages(decrypted);
-
-        // Build userId -> name map
-        const map: Record<string, string> = {};
-        decrypted.forEach((msg) => {
-          if (msg.userId && msg.userName) {
-            map[msg.userId] = msg.userName;
+      try {
+        const response = await fetch(`/api/messages?groupId=${groupId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data.messages)) {
+            const decryptedMessages = data.messages.map((msg: Message) => ({
+              ...msg,
+              message: decryptMessage(msg.message),
+            }));
+            setMessages(decryptedMessages);
+            // Build a userId -> userName map from messages if provided
+            const map: Record<string, string> = { ...userIdToName };
+            decryptedMessages.forEach((msg: Message) => {
+              if (msg.userName) {
+                map[msg.userId] = msg.userName;
+              }
+            });
+            setUserIdToName(map);
           }
-        });
-        setUserIdToName(map);
+        } else {
+          console.error("Failed to fetch messages:", response.statusText);
+        }
+      } catch (error) {
+        console.error("Error fetching messages:", error);
       }
     }
-
     fetchMessages();
   }, [groupId]);
 
@@ -114,11 +120,34 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
         message: decryptedMsg,
         readBy: data.readBy || [],
       };
-      setMessages((prev) => [...prev, incomingMessage]);
+      // Update state: if current user sent the message and an optimistic message exists, replace it.
+      setMessages((prev) => {
+        // Look for an optimistic message from this user with matching content.
+        const optimisticIndex = prev.findIndex(
+          (msg) =>
+            msg.userId === user.id &&
+            msg.message === incomingMessage.message &&
+            msg.id.startsWith("temp_"),
+        );
+        if (optimisticIndex !== -1) {
+          const newMessages = [...prev];
+          newMessages[optimisticIndex] = incomingMessage;
+          return newMessages;
+        }
+        // Avoid adding duplicate messages by checking for matching _id.
+        if (prev.some((msg) => msg.id === incomingMessage.id)) return prev;
+        return [...prev, incomingMessage];
+      });
+
+      // If message is from someone else, fetch smart replies to suggest responses.
+      if (data.userId !== user.id) {
+        fetchSmartReplies(decryptedMsg);
+      }
+      // Emit read receipt.
       socket.emit("readReceipt", {
         groupId,
-        messageId: data._id,
-        userId: user._id,
+        messageId: data.id,
+        userId: user.id,
       });
     });
 
@@ -129,7 +158,7 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
         setMessages((prev) =>
           prev.map((msg) => {
             if (
-              msg._id === data.messageId &&
+              msg.id === data.messageId &&
               !msg.readBy?.includes(data.userId)
             ) {
               return { ...msg, readBy: [...(msg.readBy || []), data.userId] };
@@ -140,8 +169,15 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
       },
     );
 
-    socket.on("typing", (data: { userId: string; groupId: string }) => {
-      if (data.groupId === groupId && data.userId !== user._id) {
+    socket.on(
+      "typing",
+      (data: { userId: string; groupId: string; userName?: string }) => {
+        if (data.groupId !== groupId || data.userId === user.id) return;
+        // Update user map as well
+        setUserIdToName((prev) => ({
+          ...prev,
+          [data.userId]: data.userName || data.userId,
+        }));
         setTypingUsers((prev) => {
           if (!prev.includes(data.userId)) return [...prev, data.userId];
           return prev;
@@ -149,22 +185,28 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
         setTimeout(() => {
           setTypingUsers((prev) => prev.filter((id) => id !== data.userId));
         }, 3000);
-      }
+      },
+    );
+
+    socket.on("stopTyping", (data: { userId: string; groupId: string }) => {
+      if (data.groupId !== groupId) return;
+      setTypingUsers((prev) => prev.filter((id) => id !== data.userId));
     });
 
     return () => {
       socket.off("newMessage");
       socket.off("readReceipt");
       socket.off("typing");
+      socket.off("stopTyping");
     };
-  }, [socket, groupId, user._id]);
+  }, [socket, groupId, user.id]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const broadcastTyping = useBroadcast("chat-activity", (data) => {
-    if (data.groupId !== groupId || data.userId === user._id) return;
+    if (data.groupId !== groupId || data.userId === user.id) return;
 
     if (data.type === "TYPING") {
       setUserIdToName((prev) => ({
@@ -186,14 +228,9 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
   });
 
   const emitTyping = () => {
-    const typingPayload = {
-      type: "TYPING",
-      userId: user._id,
-      userName: user.name,
-      groupId,
-    };
-    socket?.emit("typing", typingPayload);
-    broadcastTyping(typingPayload);
+    const payload = { groupId, userId: user.id, userName: user.name };
+    socket?.emit("typing", payload);
+    // broadcastTyping(payload);
   };
 
   // Debounced typing event (runs max once per 300ms)
@@ -241,18 +278,18 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
         if (imageUrl) {
           const tempId = "temp_" + Date.now().toString();
           const optimisticMessage: Message = {
-            _id: tempId,
+            id: tempId,
             groupId: groupId,
-            userId: user._id,
+            userId: user.id,
             message: "",
             imageUrl: imageUrl,
             createdAt: new Date().toISOString(),
-            readBy: [user._id],
+            readBy: [user.id],
           };
           setMessages((prev) => [...prev, optimisticMessage]);
           socket?.emit("sendMessage", {
             groupId,
-            userId: user._id,
+            userId: user.id,
             message: encryptMessage(""),
             imageUrl,
           });
@@ -261,7 +298,7 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               groupId,
-              userId: user._id,
+              userId: user.id,
               message: encryptMessage(""),
               imageUrl,
             }),
@@ -275,7 +312,7 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
               message: "",
             };
             setMessages((prev) =>
-              prev.map((msg) => (msg._id === tempId ? finalMessage : msg)),
+              prev.map((msg) => (msg.id === tempId ? finalMessage : msg)),
             );
           }
         }
@@ -293,25 +330,25 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
 
   const sendMessage = async () => {
     if (messageInput.trim() === "" || !socket) return;
-    broadcastTyping({ type: "STOP_TYPING", userId: user._id, groupId });
+    broadcastTyping({ type: "STOP_TYPING", userId: user.id, groupId });
 
     const encryptedMsg = encryptMessage(messageInput);
 
     const tempId = "temp_" + Date.now().toString();
     const optimisticMessage: Message = {
-      _id: tempId,
+      id: tempId,
       groupId,
-      userId: user._id,
+      userId: user.id,
       message: messageInput,
       createdAt: new Date().toISOString(),
-      readBy: [user._id],
+      readBy: [user.id],
     };
     setMessages((prev) => [...prev, optimisticMessage]);
     setMessageInput("");
 
     socket?.emit("sendMessage", {
       groupId,
-      userId: user._id,
+      userId: user.id,
       message: encryptedMsg,
     });
 
@@ -321,7 +358,7 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           groupId,
-          userId: user._id,
+          userId: user.id,
           message: encryptedMsg,
           imageUrl: "",
         }),
@@ -334,9 +371,9 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
           message: decryptMessage(savedMessage.message),
         };
         setMessages((prev) =>
-          prev.map((msg) => (msg._id === tempId ? decryptedSavedMessage : msg)),
+          prev.map((msg) => (msg.id === tempId ? decryptedSavedMessage : msg)),
         );
-        fetchSmartReplies(decryptedSavedMessage.message);
+        // Do not fetch smart replies for self-sent messages.
       } else {
         console.error("Failed to save message", await res.text());
       }
@@ -350,37 +387,48 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
     setSmartReplies([]);
   };
 
+  // Render each message with alignment.
+  const renderMessage = (msg: Message, index: number) => {
+    const isSender = msg.userId === user.id;
+    return (
+      <div
+        key={index}
+        className={`mb-2 flex ${isSender ? "justify-end" : "justify-start"}`}
+      >
+        <div
+          className={`p-2 rounded max-w-xs break-words ${isSender ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-800"}`}
+        >
+          <div className="text-xs mb-1">
+            {isSender ? user.name : msg.userName || msg.userName}
+          </div>
+          <div>{msg.message}</div>
+          {msg.imageUrl && (
+            <Image
+              src={msg.imageUrl}
+              alt="attached"
+              className="mt-1 max-w-xs rounded"
+              width={200} // Adjust width as needed
+              height={200} // Adjust height as needed
+            />
+          )}
+          {isSender && (
+            <div className="mt-1 flex justify-end">
+              {msg.readBy && msg.readBy.length > 1 ? (
+                <FilledTickIcon />
+              ) : (
+                <UnfilledTickIcon />
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 p-4 overflow-y-auto">
-        {messages.map((msg, index) => (
-          <div key={index} className="mb-2 flex items-center">
-            <div>
-              <strong>
-                {msg.userId === user._id ? user.name : msg.userId}:
-              </strong>{" "}
-              <span>{msg.message}</span>
-              {msg.imageUrl && (
-                <Image
-                  src={msg.imageUrl}
-                  alt="attached"
-                  className="mt-2 max-w-xs rounded"
-                  width={200} // Adjust width as needed
-                  height={200} // Adjust height as needed
-                />
-              )}
-            </div>
-            {msg.userId === user._id && (
-              <div className="ml-2">
-                {msg.readBy && msg.readBy.length > 1 ? (
-                  <FilledTickIcon />
-                ) : (
-                  <UnfilledTickIcon />
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+        {messages.map((msg, index) => renderMessage(msg, index))}
         <div ref={messageEndRef} />
       </div>
 
@@ -428,15 +476,9 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
           value={messageInput}
           onChange={(e) => setMessageInput(e.target.value)}
           onKeyDown={() => handleTyping()}
-          onBlur={() => {
-            const stopTypingPayload = {
-              type: "STOP_TYPING",
-              userId: user._id,
-              groupId,
-            };
-            socket?.emit("stopTyping", stopTypingPayload);
-            broadcastTyping(stopTypingPayload);
-          }}
+          onBlur={() =>
+            socket?.emit("stopTyping", { groupId, userId: user.id })
+          }
         />
         <div className="flex p-2">
           <div className="w-1/2"></div>

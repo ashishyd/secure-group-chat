@@ -7,7 +7,17 @@ export async function GET(_request: NextRequest) {
   try {
     // Retrieve all groups from the "groups" collection.
     const groups = await mongoDB.find("groups");
-    return NextResponse.json({ groups }, { status: 200 });
+    return NextResponse.json(
+      {
+        groups: groups.map((group) => ({
+          id: group._id,
+          name: group.name,
+          creatorId: group.creatorId,
+          members: group.members,
+        })),
+      },
+      { status: 200 },
+    );
   } catch (error) {
     logError("Error fetching groups:", error);
     return NextResponse.json(

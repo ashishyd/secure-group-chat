@@ -11,7 +11,16 @@ export async function GET(req: NextRequest) {
     }
 
     // Get all messages for the group
-    const messages = await mongoDB.find("messages", { groupId });
+    const dbMessages = await mongoDB.find("messages", { groupId });
+
+    const messages = dbMessages.map((msg) => ({
+      id: msg._id,
+      userId: msg.userId,
+      message: msg.message,
+      imageUrl: msg.imageUrl,
+      createdAt: new Date(msg.createdAt).toISOString(),
+      readBy: msg.readBy,
+    }));
 
     // Collect unique userIds
     const userIds = [...new Set(messages.map((msg) => msg.userId))];

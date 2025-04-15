@@ -6,11 +6,11 @@ export const useSocket = (): Socket | null => {
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    // Connect to your custom API route endpoint for Socket.IO
-    const socketInstance = io("", {
-      path: "/api/socket",
-      transports: ["websocket"],
+    // Replace the URL with your deployed Socket.IO server URL.
+    const socketInstance = io("http://localhost:4000", {
+      path: "/socket",
     });
+
     socketRef.current = socketInstance;
     setSocket(socketInstance);
 

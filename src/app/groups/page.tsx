@@ -95,7 +95,7 @@ export default function GroupsPage() {
     }
 
     try {
-      const payload = { name: newGroupName, creatorId: user._id };
+      const payload = { name: newGroupName, creatorId: user.id };
       const response = await fetch("/api/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -124,7 +124,7 @@ export default function GroupsPage() {
         <div className="space-y-4">
           {groups.map((group) => (
             <GroupCard
-              key={group._id}
+              key={group.id}
               group={group}
               currentUser={user}
               onJoin={handleJoin}
