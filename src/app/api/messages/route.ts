@@ -3,20 +3,34 @@ import type { NextRequest } from "next/server";
 import { mongoDB } from "@/lib/db";
 import { logError } from "@/lib/logger";
 
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const groupId = searchParams.get("groupId");
+    const groupId = req.nextUrl.searchParams.get("groupId");
     if (!groupId) {
       return NextResponse.json({ error: "Missing groupId" }, { status: 400 });
     }
-    // Find messages for the given group
+
+    // Get all messages for the group
     const messages = await mongoDB.find("messages", { groupId });
-    return NextResponse.json({ messages }, { status: 200 });
+
+    // Collect unique userIds
+    const userIds = [...new Set(messages.map((msg) => msg.userId))];
+
+    // Fetch user details
+    const users = await mongoDB.find("users", { id: { $in: userIds } });
+    const userMap = Object.fromEntries(users.map((u) => [u.id, u.name]));
+
+    // Attach userName to each message
+    const messagesWithNames = messages.map((msg) => ({
+      ...msg,
+      userName: userMap[msg.userId] || "Unknown",
+    }));
+
+    return NextResponse.json({ messages: messagesWithNames }, { status: 200 });
   } catch (error) {
-    logError("Error fetching messages:", error);
+    logError("GET /api/messages error", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: "Failed to fetch messages" },
       { status: 500 },
     );
   }

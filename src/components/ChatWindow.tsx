@@ -8,6 +8,8 @@ import { TextInput } from "@/components/ui/TextInput";
 import { useSocket } from "@/hooks/useSocket";
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
+import { useBroadcast } from "@/hooks/useBroadcast";
+import { debounce } from "lodash";
 
 const UnfilledTickIcon = () => (
   <svg
@@ -70,29 +72,33 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const socket = useSocket();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [userIdToName, setUserIdToName] = useState<Record<string, string>>({});
 
   if (!user) return <div>Loading user...</div>;
 
   useEffect(() => {
     async function fetchMessages() {
-      try {
-        const response = await fetch(`/api/messages?groupId=${groupId}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data.messages)) {
-            const decryptedMessages = data.messages.map((msg: Message) => ({
-              ...msg,
-              message: decryptMessage(msg.message),
-            }));
-            setMessages(decryptedMessages);
+      const res = await fetch(`/api/messages?groupId=${groupId}`);
+      const data = await res.json();
+
+      if (res.ok && Array.isArray(data.messages)) {
+        const decrypted = data.messages.map((msg: Message) => ({
+          ...msg,
+          message: decryptMessage(msg.message),
+        }));
+        setMessages(decrypted);
+
+        // Build userId -> name map
+        const map: Record<string, string> = {};
+        decrypted.forEach((msg) => {
+          if (msg.userId && msg.userName) {
+            map[msg.userId] = msg.userName;
           }
-        } else {
-          console.error("Failed to fetch messages:", response.statusText);
-        }
-      } catch (error) {
-        console.error("Error fetching messages:", error);
+        });
+        setUserIdToName(map);
       }
     }
+
     fetchMessages();
   }, [groupId]);
 
@@ -157,9 +163,41 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleTyping = () => {
-    socket?.emit("typing", { groupId, userId: user._id });
+  const broadcastTyping = useBroadcast("chat-activity", (data) => {
+    if (data.groupId !== groupId || data.userId === user._id) return;
+
+    if (data.type === "TYPING") {
+      setUserIdToName((prev) => ({
+        ...prev,
+        [data.userId]: data.userName || prev[data.userId] || data.userId,
+      }));
+      setTypingUsers((prev) =>
+        prev.includes(data.userId) ? prev : [...prev, data.userId],
+      );
+
+      setTimeout(() => {
+        setTypingUsers((prev) => prev.filter((id) => id !== data.userId));
+      }, 3000);
+    }
+
+    if (data.type === "STOP_TYPING") {
+      setTypingUsers((prev) => prev.filter((id) => id !== data.userId));
+    }
+  });
+
+  const emitTyping = () => {
+    const typingPayload = {
+      type: "TYPING",
+      userId: user._id,
+      userName: user.name,
+      groupId,
+    };
+    socket?.emit("typing", typingPayload);
+    broadcastTyping(typingPayload);
   };
+
+  // Debounced typing event (runs max once per 300ms)
+  const handleTyping = debounce(emitTyping, 300);
 
   const fetchSmartReplies = async (messageText: string) => {
     try {
@@ -255,6 +293,8 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
 
   const sendMessage = async () => {
     if (messageInput.trim() === "" || !socket) return;
+    broadcastTyping({ type: "STOP_TYPING", userId: user._id, groupId });
+
     const encryptedMsg = encryptMessage(messageInput);
 
     const tempId = "temp_" + Date.now().toString();
@@ -346,8 +386,13 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
 
       {typingUsers.length > 0 && (
         <div className="px-4 py-2 text-sm text-gray-500">
-          {typingUsers.join(", ")} {typingUsers.length > 1 ? "are" : "is"}{" "}
-          typing...
+          {typingUsers.map((id, i) => (
+            <span key={id}>
+              {i > 0 && ", "}
+              {userIdToName[id] ?? id}
+            </span>
+          ))}{" "}
+          {typingUsers.length === 1 ? "is typing..." : "are typing..."}
         </div>
       )}
 
@@ -382,7 +427,16 @@ const ChatWindow = ({ groupId }: ChatWindowProps) => {
           placeholder="Type a message..."
           value={messageInput}
           onChange={(e) => setMessageInput(e.target.value)}
-          onKeyDown={handleTyping}
+          onKeyDown={() => handleTyping()}
+          onBlur={() => {
+            const stopTypingPayload = {
+              type: "STOP_TYPING",
+              userId: user._id,
+              groupId,
+            };
+            socket?.emit("stopTyping", stopTypingPayload);
+            broadcastTyping(stopTypingPayload);
+          }}
         />
         <div className="flex p-2">
           <div className="w-1/2"></div>
